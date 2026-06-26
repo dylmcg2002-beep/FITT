@@ -1,33 +1,420 @@
-// api/tredict.js — runs on Vercel as a serverless function (server-side only).
-// Your token NEVER reaches the browser; it lives in the host's env settings.
-
-// The correct Tredict endpoint is pre-filled. You normally only need TREDICT_TOKEN.
-// extendedSummary=1 is REQUIRED — without it the list has no distance/pace/HR.
-const DEFAULT_URL =
-  'https://www.tredict.com/api/oauth/v2/activityList?extendedSummary=1&pageSize=400';
-
-export default async function handler(req, res) {
-  const token = process.env.TREDICT_TOKEN;                     // your read-only Personal API token
-  const url   = process.env.TREDICT_ACTIVITIES_URL || DEFAULT_URL; // override only if ever needed
-
-  if (!token) {
-    return res.status(503).json({
-      error: 'not_configured',
-      message: 'Set TREDICT_TOKEN in your Vercel project settings, then redeploy.'
-    });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FITT · 33K Sub-6:00</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0a0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FITT">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0a0d12; --panel:#121821; --panel-2:#0e131b; --line:#22303f;
+    --ice:#58d6e0; --ice-dim:#2f6e76; --ember:#f0a868; --ember-dim:#7a5436;
+    --text:#e8eef6; --dim:#8595a8; --dim2:#5a6878;
   }
-
-  try {
-    const r = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;charset=UTF-8' }
-    });
-    if (!r.ok) {
-      return res.status(r.status).json({ error: 'tredict_error', status: r.status });
-    }
-    const data = await r.json();
-    res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=86400'); // 15-min edge cache
-    return res.status(200).json(data);
-  } catch (e) {
-    return res.status(502).json({ error: 'fetch_failed', message: String(e) });
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--void); color:var(--text);
+    font-family:"Saira",system-ui,sans-serif; font-size:14px; line-height:1.5;
+    background-image:
+      radial-gradient(900px 500px at 50% -160px, rgba(88,214,224,.08), transparent 70%),
+      linear-gradient(rgba(88,214,224,.022) 1px,transparent 1px),
+      linear-gradient(90deg, rgba(88,214,224,.022) 1px,transparent 1px);
+    background-size:auto, 40px 40px, 40px 40px;
+    background-attachment:fixed;
   }
+  .mono{font-family:"JetBrains Mono",monospace}
+  .wrap{max-width:940px;margin:0 auto;padding:20px 18px 80px}
+  .lbl{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--dim)}
+
+  /* boot */
+  .boot{opacity:0;transform:translateY(12px);animation:up .55s cubic-bezier(.2,.7,.3,1) forwards}
+  @keyframes up{to{opacity:1;transform:none}}
+
+  /* top bar */
+  .top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{display:flex;align-items:baseline;gap:12px}
+  .brand h1{margin:0;font-size:34px;font-weight:700;letter-spacing:7px;
+    background:linear-gradient(180deg,#fff,#9fdfe6);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .decoder{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:3px;color:var(--dim2);line-height:1.3}
+  .decoder b{color:var(--ice);font-weight:500}
+  .live{margin-left:auto;display:flex;align-items:center;gap:8px;font-family:"JetBrains Mono",monospace;
+    font-size:10px;letter-spacing:1px;color:var(--dim);border:1px solid var(--line);
+    padding:6px 11px;border-radius:20px;background:rgba(18,24,33,.6)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim2);flex:none;box-shadow:0 0 0 0 transparent}
+  .dot.live{background:var(--ice);box-shadow:0 0 10px var(--ice);animation:pulse 2.4s infinite}
+  .dot.snap{background:var(--ember);box-shadow:0 0 8px var(--ember-dim)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+  /* hero instrument */
+  .hero{position:relative;background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--line);border-radius:6px;padding:20px;margin-bottom:22px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 18px 50px -30px rgba(0,0,0,.9)}
+  .cnr{position:absolute;width:13px;height:13px;border:1.5px solid var(--ice);opacity:.45}
+  .c1{top:-1px;left:-1px;border-right:0;border-bottom:0}.c2{top:-1px;right:-1px;border-left:0;border-bottom:0}
+  .c3{bottom:-1px;left:-1px;border-right:0;border-top:0}.c4{bottom:-1px;right:-1px;border-left:0;border-top:0}
+  .hero-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .callsign{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:2px;color:var(--text)}
+  .callsign span{color:var(--ice)}
+  .verdict{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:1.5px;color:var(--ember);
+    border:1px solid var(--ember-dim);background:rgba(240,168,104,.07);padding:5px 12px;border-radius:4px}
+  .verdict b{color:#ffce9e}
+  .hero-main{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+  .count{flex:1;min-width:180px}
+  .count .num{font-size:74px;font-weight:700;line-height:.85;letter-spacing:-2px;color:#fff;
+    text-shadow:0 0 30px rgba(88,214,224,.25)}
+  .count .num small{font-size:20px;color:var(--ice);letter-spacing:0;margin-left:6px}
+  .count .sub{margin-top:8px}
+  .gauges{display:flex;gap:18px}
+  .gauge{text-align:center;position:relative}
+  .gauge svg{display:block;width:108px;height:108px}
+  .gtrack{fill:none;stroke:var(--line);stroke-width:7}
+  .gprog{fill:none;stroke-width:7;stroke-linecap:round;transform:rotate(-90deg);transform-origin:center;
+    transition:stroke-dashoffset 1.3s cubic-bezier(.2,.7,.3,1)}
+  .gauge .gv{position:absolute;top:38px;left:0;right:0;font-size:26px;font-weight:700;line-height:1}
+  .gauge .gv small{font-size:12px;color:var(--dim)}
+  .gauge .gl{margin-top:6px}
+
+  .vitals{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:20px;
+    background:var(--line);border:1px solid var(--line);border-radius:5px;overflow:hidden}
+  .vitals div{background:var(--panel-2);padding:11px 12px}
+  .vitals .v{font-family:"JetBrains Mono",monospace;font-size:21px;font-weight:500;color:var(--text)}
+  .vitals .v small{font-size:11px;color:var(--dim)}
+  .vitals .k{margin-top:4px}
+  @media(max-width:600px){.vitals{grid-template-columns:repeat(2,1fr)}
+    .count .num{font-size:60px}.hero-main{gap:18px}}
+
+  /* panels */
+  .panel{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:16px;margin:16px 0}
+  .ph{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .pref{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:1px;color:var(--ice);
+    border:1px solid var(--ice-dim);padding:2px 7px;border-radius:3px;background:rgba(88,214,224,.06)}
+  .ph h2{margin:0;font-size:17px;font-weight:600;letter-spacing:.3px}
+  .ph .meta{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--dim2);letter-spacing:1px}
+  canvas{max-height:250px}
+  .cap{font-size:11.5px;color:var(--dim);margin-top:10px;line-height:1.45}
+  .cap b{color:var(--text)}
+
+  /* fuelling */
+  .fuel-in,.fuel-out{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+    background:var(--line);border:1px solid var(--line);overflow:hidden}
+  .fuel-in{border-radius:5px 5px 0 0;margin-bottom:1px}
+  .fuel-out{border-radius:0 0 5px 5px;border-top:0}
+  .fuel-in label{display:block;background:var(--panel-2);padding:9px 12px;cursor:text}
+  .fuel-in .k,.fuel-out .k{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:1.5px;
+    text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+  .fuel-in input{width:100%;background:transparent;border:0;color:var(--ice);
+    font-family:"JetBrains Mono",monospace;font-size:19px;font-weight:500;padding:0;outline:none}
+  .fuel-in input::placeholder{color:var(--dim2)}
+  .fuel-out div{background:var(--panel-2);padding:11px 12px}
+  .fuel-out .v{font-family:"JetBrains Mono",monospace;font-size:22px;font-weight:500;color:var(--text);line-height:1}
+  .fuel-out .v small{font-size:11px;color:var(--dim)}
+  .fuel-out .k{margin-top:5px}
+  .fuel-out .v.ok{color:var(--ice)} .fuel-out .v.warn{color:var(--ember)}
+  .taper{position:relative;height:26px;margin-top:12px;border:1px solid var(--line);
+    border-radius:4px;overflow:hidden;background:var(--panel)}
+  .taper-fill{position:absolute;left:0;top:0;bottom:0;
+    background:linear-gradient(90deg,rgba(240,168,104,.5),rgba(240,168,104,.14));
+    transition:width 1s cubic-bezier(.2,.7,.3,1)}
+  .taper-lbl{position:absolute;left:9px;top:50%;transform:translateY(-50%);
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:1.5px;color:var(--text)}
+  @media(max-width:600px){.fuel-in input{font-size:16px}.fuel-out .v{font-size:18px}}
+
+  /* protocol table */
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+  th{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);background:var(--panel)}
+  td.wk{font-family:"JetBrains Mono",monospace;font-weight:700;font-size:14px;text-align:center;width:30px;color:var(--ice)}
+  tr.cut td{color:var(--dim2)}tr.race td{background:rgba(240,168,104,.06)}tr.race td.wk{color:var(--ember)}
+  .phase td{background:rgba(88,214,224,.07);color:var(--ice);font-family:"JetBrains Mono",monospace;
+    font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:4px 8px}
+  .pace{color:var(--ice)}.mp{color:var(--ember)}
+
+  /* analysis */
+  .note{display:flex;gap:11px;padding:11px 2px;border-bottom:1px solid var(--line)}
+  .note:last-child{border-bottom:0}
+  .note .m{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--ice);min-width:18px}
+  .note.flag .m{color:var(--ember)}.note p{margin:0;color:#cdd6e2}.note b{color:#fff}
+
+  footer{margin-top:30px;padding-top:12px;border-top:1px solid var(--line);
+    font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--dim2);letter-spacing:1px;
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top boot">
+    <div class="brand">
+      <h1>FITT</h1>
+      <div class="decoder"><b>F</b>REQUENCY · <b>I</b>NTENSITY<br><b>T</b>IME · <b>T</b>YPE</div>
+    </div>
+    <div class="live"><span class="dot" id="dot"></span><span id="statusText">BOOTING</span></div>
+  </div>
+
+  <div class="hero boot" style="animation-delay:.06s">
+    <span class="cnr c1"></span><span class="cnr c2"></span><span class="cnr c3"></span><span class="cnr c4"></span>
+    <div class="hero-top">
+      <div class="callsign">FITT <span>//</span> 33K · TARGET 5:59/KM</div>
+      <div class="verdict">SUB-6:00 · <b>CONDITIONAL</b></div>
+    </div>
+    <div class="hero-main">
+      <div class="count">
+        <div class="num"><span id="cDays">—</span><small>DAYS</small></div>
+        <div class="sub lbl">TO RACE · 06 SEP 2026 · <span id="cWks">—</span> WK</div>
+      </div>
+      <div class="gauges">
+        <div class="gauge">
+          <svg viewBox="0 0 120 120"><circle class="gtrack" cx="60" cy="60" r="52"/>
+            <circle class="gprog" id="g1" cx="60" cy="60" r="52" stroke="var(--ice)"/></svg>
+          <div class="gv" id="g1v">—<small>%</small></div><div class="gl lbl">Endurance</div>
+        </div>
+        <div class="gauge">
+          <svg viewBox="0 0 120 120"><circle class="gtrack" cx="60" cy="60" r="52"/>
+            <circle class="gprog" id="g2" cx="60" cy="60" r="52" stroke="var(--ember)"/></svg>
+          <div class="gv" id="g2v">—<small>%</small></div><div class="gl lbl">Efficiency</div>
+        </div>
+      </div>
+    </div>
+    <div class="vitals">
+      <div><div class="v" id="sLong">—</div><div class="k lbl">Longest run</div></div>
+      <div><div class="v" id="sPace">—</div><div class="k lbl">Long-run pace</div></div>
+      <div><div class="v" id="sPeak">—</div><div class="k lbl">Peak week</div></div>
+      <div><div class="v" id="sHr">—</div><div class="k lbl">Est. max HR</div></div>
+    </div>
+  </div>
+
+  <div class="panel boot" style="animation-delay:.12s">
+    <div class="ph"><span class="pref">DATA·01</span><h2>Endurance build</h2><span class="meta" id="srcA">vs 33K</span></div>
+    <canvas id="longChart"></canvas>
+    <div class="cap"><b>Read:</b> long-run distance trend. Amber marker = 33K race. Protocol peaks the long run near 30K by mid-Aug.</div>
+  </div>
+
+  <div class="panel boot" style="animation-delay:.16s">
+    <div class="ph"><span class="pref">DATA·02</span><h2>Efficiency at 6:00/km</h2><span class="meta">decisive</span></div>
+    <canvas id="effChart"></canvas>
+    <div class="cap"><b>Read:</b> avg HR on long runs, pace labelled per bar. <b>Goal:</b> drive bars down to the ice line (~161) at 6:00/km. If that lands by mid-Aug, sub-6:00 is live.</div>
+  </div>
+
+  <div class="panel boot" style="animation-delay:.2s">
+    <div class="ph"><span class="pref">DATA·03</span><h2>Weekly volume</h2><span class="meta">target 55K</span></div>
+    <canvas id="volChart"></canvas>
+    <div class="cap"><b>Read:</b> weekly km vs the amber 55K peak target.</div>
+  </div>
+
+  <div class="panel boot" style="animation-delay:.24s">
+    <div class="ph"><span class="pref">DATA·04</span><h2>Fuelling balance</h2><span class="meta" id="fuelMeta">manual · MFP</span></div>
+    <div class="fuel-in">
+      <label><div class="k">Weight · kg</div><input id="fWeight" type="number" inputmode="decimal" placeholder="70"></label>
+      <label><div class="k">Rest-day kcal</div><input id="fTDEE" type="number" inputmode="numeric" placeholder="2000"></label>
+      <label><div class="k">Today · MFP kcal</div><input id="fIntake" type="number" inputmode="numeric" placeholder="—"></label>
+    </div>
+    <div class="fuel-out">
+      <div><div class="v" id="fRec">—</div><div class="k lbl">Target intake</div></div>
+      <div><div class="v" id="fDef">—</div><div class="k lbl">Deficit · today</div></div>
+      <div><div class="v" id="fBal">—</div><div class="k lbl" id="fBalK">Balance</div></div>
+    </div>
+    <div class="taper"><div class="taper-fill" id="taperFill"></div><span class="taper-lbl" id="taperLbl">DEFICIT TAPER · 35→55 KM/WK</span></div>
+    <div class="cap"><b>Read:</b> log food in MyFitnessPal, drop your daily total into <b>Today · MFP</b>. Target intake already bakes in a deficit that <b>shrinks as weekly volume climbs</b> — full lean in base weeks, easing to maintenance through the race build so HR and recovery stay protected. <b>Don't chase the deficit on long-run days.</b> Inputs save in this browser.</div>
+  </div>
+
+  <div class="panel boot" style="animation-delay:.28s">
+    <div class="ph"><span class="pref">PROTOCOL</span><h2>11-week build</h2><span class="meta">3 RUN · 3 LIFT</span></div>
+    <table>
+      <thead><tr><th>Wk</th><th>Long run</th><th>Quality</th><th>Easy</th><th>Strength</th><th>Focus</th></tr></thead>
+      <tbody>
+        <tr class="phase"><td colspan="6">Phase 1 · Endurance base (Wk 1–4)</td></tr>
+        <tr><td class="wk">1</td><td>20km <span class="pace">@6:15</span></td><td>8km, 4km <span class="pace">@5:50</span></td><td>7km <span class="pace">@6:40</span></td><td>2× upper · 1× lower</td><td>Re-establish long run</td></tr>
+        <tr><td class="wk">2</td><td>22km <span class="pace">@6:10</span></td><td>9km, 3×8min thr</td><td>7km partner <span class="pace">@6:45</span></td><td>2× upper · 1× lower</td><td>Extend endurance</td></tr>
+        <tr><td class="wk">3</td><td>24km <span class="pace">@6:05</span></td><td>10km, 5km <span class="mp">@6:00 MP</span></td><td>8km <span class="pace">@6:40</span></td><td>2× upper · 1× lower</td><td>Intro race pace</td></tr>
+        <tr class="cut"><td class="wk">4</td><td>18km <span class="pace">@6:20</span> · cutback</td><td>8km easy tempo</td><td>6km <span class="pace">@6:45</span></td><td>2× upper · 1× lower</td><td>Absorb / recover</td></tr>
+        <tr class="phase"><td colspan="6">Phase 2 · Race-specific (Wk 5–8)</td></tr>
+        <tr><td class="wk">5</td><td>26km <span class="pace">@6:05</span></td><td>10km, 2×12min thr</td><td>8km partner <span class="pace">@6:45</span></td><td>2× upper · 1× lower</td><td>Peak endurance</td></tr>
+        <tr><td class="wk">6</td><td>24km, 8km <span class="mp">@6:00 MP</span></td><td>10km tempo</td><td>8km <span class="pace">@6:40</span></td><td>2× upper · 1× lower</td><td>Race-pace feel</td></tr>
+        <tr><td class="wk">7</td><td>28km <span class="pace">@6:05</span> · longest</td><td>10km, 3×10min thr</td><td>8km partner <span class="pace">@6:45</span></td><td>2× upper · 1× lower</td><td>Decision point ◆</td></tr>
+        <tr class="cut"><td class="wk">8</td><td>22km, 6km <span class="mp">@6:00 MP</span></td><td>9km tempo</td><td>7km <span class="pace">@6:45</span></td><td>2× upper · 1× lower</td><td>Sharpen + recover</td></tr>
+        <tr class="phase"><td colspan="6">Phase 3 · Peak &amp; taper (Wk 9–11) — leg volume drops</td></tr>
+        <tr><td class="wk">9</td><td>30km <span class="pace">@6:05</span> · rehearsal</td><td>10km, 2×15min thr</td><td>8km partner <span class="pace">@6:45</span></td><td>2× upper only</td><td>Peak week</td></tr>
+        <tr><td class="wk">10</td><td>20km, 4km <span class="mp">@6:00</span></td><td>8km, 4km <span class="mp">@5:55</span></td><td>6km <span class="pace">@6:45</span></td><td>2× upper · light</td><td>Taper begins</td></tr>
+        <tr class="race"><td class="wk">11</td><td>RACE · 33km <span class="mp">@5:59</span></td><td>5km, 3km @ goal</td><td>4km + strides</td><td>optional light</td><td>Execute</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel boot" style="animation-delay:.32s">
+    <div class="ph"><span class="pref">ANALYSIS</span><h2>Coach readout</h2><span class="meta">REVIEW WK7</span></div>
+    <div class="note"><span class="m">01</span><p><b>Verdict.</b> Endurance trend supports sub-6:00; efficiency trend doesn't yet. Primary plan: <b>5:59/km</b>. Fallback: <b>6:08–6:12/km</b> with sub-6:00 as a negative-split stretch. Week 7's 28km is the call.</p></div>
+    <div class="note"><span class="m">02</span><p><b>Biggest lever:</b> keep easy runs genuinely easy (Z2, 6:40–6:45). Yours drift to 6:20 at HR 160+ — that eats recovery without building fitness.</p></div>
+    <div class="note"><span class="m">03</span><p><b>Strength &amp; physique.</b> 3 lifts/wk holds to Wk 8, then legs drop to protect run quality. For lean mass on this volume, the limiter is fuelling — protein ~1.8g/kg, don't under-eat on long-run days.</p></div>
+    <div class="note flag"><span class="m">!</span><p><b>Open item.</b> 1–7 June logged zero runs. If planned recovery, fine. If missed/illness/travel, the opening weeks should re-base off a true floor.</p></div>
+  </div>
+
+  <footer><span id="footSrc">FITT // prepared by Claude (Coach)</span><span>NEXT REVIEW · POST WK7</span></footer>
+</div>
+
+<script>
+const ICE='#58d6e0',EMBER='#f0a868',TEXT='#e8eef6',DIM='#8595a8',GRID='rgba(120,140,165,.12)';
+const RACE=new Date('2026-09-06'); const C=2*Math.PI*52;
+
+const SNAPSHOT={
+  longLabels:['11 Apr','2 May','9 May','16 May','31 May','13 Jun'],
+  longData:[9.0,12.0,12.3,15.0,17.0,19.3],
+  effLabels:['2 May·12k','9 May·12k','16 May·15k','31 May·17k','13 Jun·19k'],
+  effHR:[165,160,164,163,168], effPace:['6:16','6:26','6:02','6:00','6:00'],
+  volLabels:['Apr 6','Apr 13','Apr 20','Apr 27','May 4','May 11','May 18','May 25','Jun 1','Jun 8','Jun 15','Jun 22'],
+  volData:[14.5,14.9,16,20.7,20.3,29.3,22.8,33.3,0,30.0,15.0,4.7],
+  stats:{long:'19.3',pace:'6:00',peak:'~33',hr:'~193'}
+};
+
+const fmtPace=s=>(!s||!isFinite(s))?'—':Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0');
+const shortD=d=>d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+function weekStart(d){const x=new Date(d);const day=(x.getUTCDay()+6)%7;x.setUTCDate(x.getUTCDate()-day);x.setUTCHours(0,0,0,0);return x;}
+
+function norm(a){const s=a.extendedSummary||a.summary||a;
+  const dist=Number(s.distance ?? a.distance ?? 0);
+  const pace=Number(s.pace ?? a.pace ?? 0)||null;
+  const hr=Number(s.heartrate ?? a.heartrate ?? 0)||null;
+  const hrMax=Number(s.heartrateMax ?? a.heartrateMax ?? 0)||null;
+  const dt=a.date||a.startTime||a.start_time||a.createdAt;
+  return {date:dt?new Date(dt):null,dist:dist/1000,pace,hr,hrMax,sport:(a.sportType||a.sport||'').toLowerCase()};}
+
+function computeSeries(raw){
+  const arr=Array.isArray(raw)?raw:((raw._embedded&&raw._embedded.activityList)||raw.activities||raw.items||raw.data||[]);
+  const runs=arr.map(norm).filter(r=>r.sport==='running'&&r.dist>0.3&&r.date).sort((a,b)=>a.date-b.date);
+  if(!runs.length)return null;
+  const longs=runs.filter(r=>r.dist>=9), effs=runs.filter(r=>r.dist>=12);
+  const now=weekStart(new Date()),weeks=[];
+  for(let i=11;i>=0;i--){const w=new Date(now);w.setUTCDate(w.getUTCDate()-i*7);weeks.push({key:+w,label:shortD(w),km:0});}
+  runs.forEach(r=>{const w=weeks.find(x=>x.key===+weekStart(r.date));if(w)w.km+=r.dist;});
+  const recentLong=[...runs].reverse().find(r=>r.dist>=15)||longs[longs.length-1];
+  return {longLabels:longs.map(r=>shortD(r.date)),longData:longs.map(r=>+r.dist.toFixed(1)),
+    effLabels:effs.map(r=>shortD(r.date)+'·'+Math.round(r.dist)+'k'),
+    effHR:effs.map(r=>r.hr),effPace:effs.map(r=>fmtPace(r.pace)),
+    volLabels:weeks.map(w=>w.label),volData:weeks.map(w=>+w.km.toFixed(1)),
+    stats:{long:runs.reduce((m,r)=>Math.max(m,r.dist),0).toFixed(1),
+      pace:recentLong?fmtPace(recentLong.pace):'—',
+      peak:'~'+Math.round(Math.max(...weeks.map(w=>w.km))),
+      hr:'~'+(runs.reduce((m,r)=>Math.max(m,r.hrMax||0),0)||193)}};
 }
+
+let charts={};
+function setGauge(id,vid,pct,color){
+  const c=document.getElementById(id); c.style.strokeDasharray=C;
+  c.style.strokeDashoffset=C*(1-clamp(pct,0,100)/100);
+  document.getElementById(vid).innerHTML=Math.round(pct)+'<small>%</small>';
+}
+function chartOpts(yMin,yMax,yTitle){return {responsive:true,animation:{duration:900},
+  plugins:{legend:{display:false}},
+  scales:{y:{min:yMin,max:yMax,grid:{color:GRID},ticks:{color:DIM},title:{display:true,text:yTitle,color:DIM}},
+    x:{grid:{display:false},ticks:{color:DIM}}}};}
+
+function render(S,live){
+  document.getElementById('sLong').innerHTML=S.stats.long+'<small>km</small>';
+  document.getElementById('sPace').innerHTML=S.stats.pace+'<small>/km</small>';
+  document.getElementById('sPeak').innerHTML=S.stats.peak+'<small>km</small>';
+  document.getElementById('sHr').textContent=S.stats.hr;
+  const days=Math.max(0,Math.round((RACE-new Date())/864e5));
+  document.getElementById('cDays').textContent=days;
+  document.getElementById('cWks').textContent=Math.ceil(days/7);
+
+  // gauges: endurance = longest/30 ; efficiency = how close recent long-run HR is to 161 (from 175 baseline)
+  const longest=parseFloat(S.stats.long)||0;
+  const lastHR=[...S.effHR].reverse().find(h=>h)||168;
+  setTimeout(()=>{setGauge('g1','g1v',clamp(longest/30*100,0,100),ICE);
+    setGauge('g2','g2v',clamp((175-lastHR)/(175-161)*100,0,100),EMBER);},120);
+
+  Object.values(charts).forEach(c=>c&&c.destroy());
+  Chart.defaults.font.family="'JetBrains Mono',monospace";Chart.defaults.font.size=11;Chart.defaults.color=DIM;
+
+  charts.long=new Chart(longChart,{type:'line',data:{labels:S.longLabels,datasets:[
+    {data:S.longData,borderColor:ICE,backgroundColor:'rgba(88,214,224,.08)',fill:true,tension:.25,
+      pointRadius:4,pointBackgroundColor:'#0a0d12',pointBorderColor:ICE,pointBorderWidth:2,borderWidth:2.5},
+    {data:S.longLabels.map(()=>33),borderColor:EMBER,borderDash:[6,4],pointRadius:0,borderWidth:1.5}]},
+    options:chartOpts(0,36,'km')});
+
+  charts.eff=new Chart(effChart,{type:'bar',data:{labels:S.effLabels,datasets:[
+    {data:S.effHR,backgroundColor:S.effHR.map((h,i)=>i===S.effHR.length-1?EMBER:'#2c3a4d'),borderColor:'#3a4a5e',borderWidth:1},
+    {type:'line',data:S.effHR.map(()=>161),borderColor:ICE,borderDash:[5,4],pointRadius:0,borderWidth:1.5}]},
+    options:{...chartOpts(150,175,'avg HR'),plugins:{legend:{display:false},
+      tooltip:{callbacks:{afterLabel:c=>S.effPace[c.dataIndex]+' /km'}}}},
+    plugins:[{id:'pl',afterDatasetsDraw(c){const{ctx}=c;ctx.save();ctx.font="500 11px 'JetBrains Mono'";ctx.fillStyle=TEXT;ctx.textAlign='center';
+      c.getDatasetMeta(0).data.forEach((b,i)=>{if(S.effPace[i])ctx.fillText(S.effPace[i],b.x,b.y-6)});ctx.restore();}}]});
+
+  charts.vol=new Chart(volChart,{type:'bar',data:{labels:S.volLabels,datasets:[
+    {data:S.volData,backgroundColor:'rgba(88,214,224,.55)',borderColor:ICE,borderWidth:1},
+    {type:'line',data:S.volLabels.map(()=>55),borderColor:EMBER,borderDash:[6,4],pointRadius:0,borderWidth:1.5}]},
+    options:chartOpts(0,60,'km')});
+
+  const dot=document.getElementById('dot'),st=document.getElementById('statusText');
+  if(live){dot.className='dot live';st.textContent='LIVE · TREDICT';document.getElementById('footSrc').textContent='FITT // live · Tredict Personal API';}
+  else{dot.className='dot snap';st.textContent='SNAPSHOT · 24 JUN';}
+}
+
+/* ---- fuelling (manual MFP number + auto-tapering deficit) ---- */
+const FUEL_KEY='fitt_fuel_v1', KPK=0.95;  // ~0.95 kcal per kg per km
+let CUR_S=SNAPSHOT;                         // latest series driving the taper
+function loadFuel(){try{return JSON.parse(localStorage.getItem(FUEL_KEY))||{}}catch(e){return{}}}
+function saveFuel(f){try{localStorage.setItem(FUEL_KEY,JSON.stringify(f))}catch(e){}}
+function recentWeeklyKm(S){
+  if(!S||!S.volData||!S.volData.length)return 0;
+  const tail=S.volData.slice(0,-1).slice(-4);      // drop current partial week, avg last 4 complete
+  if(!tail.length)return S.volData[0]||0;
+  return tail.reduce((a,b)=>a+b,0)/tail.length;
+}
+function updateFuel(){
+  const f=loadFuel();
+  const w=parseFloat(document.getElementById('fWeight').value)||f.w||70;
+  const t=parseFloat(document.getElementById('fTDEE').value)||f.t||2000;
+  const iRaw=document.getElementById('fIntake').value;
+  const intake=iRaw!==''?parseFloat(iRaw):(f.i!=null?f.i:null);
+  saveFuel({w,t,i:intake});
+  const km=recentWeeklyKm(CUR_S);
+  const deficit=clamp(Math.round(400*(55-km)/20/10)*10,0,400);  // 400 @35km → 0 @55km
+  const dailyTrain=Math.round(w*(km/7)*KPK);
+  const rec=Math.round((t+dailyTrain-deficit)/10)*10;
+  document.getElementById('fRec').innerHTML=rec+'<small> kcal</small>';
+  document.getElementById('fDef').innerHTML='−'+deficit+'<small> kcal</small>';
+  document.getElementById('fuelMeta').textContent=km?('load '+km.toFixed(0)+'k/wk'):'manual · MFP';
+  document.getElementById('taperFill').style.width=(deficit/400*100)+'%';
+  document.getElementById('taperLbl').textContent='DEFICIT '+deficit+' KCAL · '+km.toFixed(0)+'→55 KM/WK';
+  const bal=document.getElementById('fBal'),balK=document.getElementById('fBalK');
+  if(intake==null||isNaN(intake)){bal.textContent='—';bal.className='v';balK.textContent='Balance · enter MFP';return;}
+  const d=Math.round(intake-rec);
+  bal.innerHTML=(d>0?'+':'')+d+'<small> kcal</small>';
+  if(Math.abs(d)<=150){bal.className='v ok';balK.textContent='On target';}
+  else if(d>150){bal.className='v warn';balK.textContent='Surplus · leaning stalls';}
+  else{bal.className='v warn';balK.textContent='Under · fuel up';}
+}
+['fWeight','fTDEE','fIntake'].forEach(id=>document.getElementById(id).addEventListener('input',updateFuel));
+(function initFuel(){const f=loadFuel();
+  if(f.w)document.getElementById('fWeight').value=f.w;
+  if(f.t)document.getElementById('fTDEE').value=f.t;
+  if(f.i!=null)document.getElementById('fIntake').value=f.i;})();
+
+function diag(msg){const el=document.getElementById('footSrc');if(el)el.textContent='FITT // '+msg;}
+
+render(SNAPSHOT,false);
+updateFuel();
+fetch('/api/tredict')
+  .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(d=>{const S=computeSeries(d);
+    if(S){CUR_S=S;render(S,true);updateFuel();}
+    else{diag('snapshot · /api/tredict reachable, 0 runs parsed');}})
+  .catch(e=>{diag('snapshot · /api/tredict '+e.message);});
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+</script>
+</body>
+</html>
