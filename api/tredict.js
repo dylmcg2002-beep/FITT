@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   }
   try {
     const r = await fetch(
-      'https://www.tredict.com/api/personal/v2/activityList?pageSize=200',
+      'https://www.tredict.com/api/oauth/v2/activityList?pageSize=200',
       {
         headers: {
           'Authorization': `Bearer ${key}`,
