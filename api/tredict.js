@@ -5,10 +5,18 @@ export default async function handler(req, res) {
   }
   try {
     const r = await fetch(
-      'https://www.tredict.com/api/v2/activities?pageSize=200',
-      { headers: { Authorization: `Bearer ${key}` } }
+      'https://www.tredict.com/api/personal/v2/activityList?pageSize=200',
+      {
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Accept': 'application/json;charset=UTF-8'
+        }
+      }
     );
-    if (!r.ok) return res.status(r.status).json({ error: 'Tredict error' });
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ error: 'Tredict ' + r.status, detail: body.slice(0,200) });
+    }
     const data = await r.json();
     res.setHeader('Cache-Control', 's-maxage=300');
     return res.status(200).json(data);
