@@ -105,6 +105,31 @@
   .cap{font-size:11.5px;color:var(--dim);margin-top:10px;line-height:1.45}
   .cap b{color:var(--text)}
 
+  /* fuelling */
+  .fuel-in,.fuel-out{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+    background:var(--line);border:1px solid var(--line);overflow:hidden}
+  .fuel-in{border-radius:5px 5px 0 0;margin-bottom:1px}
+  .fuel-out{border-radius:0 0 5px 5px;border-top:0}
+  .fuel-in label{display:block;background:var(--panel-2);padding:9px 12px;cursor:text}
+  .fuel-in .k,.fuel-out .k{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:1.5px;
+    text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+  .fuel-in input{width:100%;background:transparent;border:0;color:var(--ice);
+    font-family:"JetBrains Mono",monospace;font-size:19px;font-weight:500;padding:0;outline:none}
+  .fuel-in input::placeholder{color:var(--dim2)}
+  .fuel-out div{background:var(--panel-2);padding:11px 12px}
+  .fuel-out .v{font-family:"JetBrains Mono",monospace;font-size:22px;font-weight:500;color:var(--text);line-height:1}
+  .fuel-out .v small{font-size:11px;color:var(--dim)}
+  .fuel-out .k{margin-top:5px}
+  .fuel-out .v.ok{color:var(--ice)} .fuel-out .v.warn{color:var(--ember)}
+  .taper{position:relative;height:26px;margin-top:12px;border:1px solid var(--line);
+    border-radius:4px;overflow:hidden;background:var(--panel)}
+  .taper-fill{position:absolute;left:0;top:0;bottom:0;
+    background:linear-gradient(90deg,rgba(240,168,104,.5),rgba(240,168,104,.14));
+    transition:width 1s cubic-bezier(.2,.7,.3,1)}
+  .taper-lbl{position:absolute;left:9px;top:50%;transform:translateY(-50%);
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:1.5px;color:var(--text)}
+  @media(max-width:600px){.fuel-in input{font-size:16px}.fuel-out .v{font-size:18px}}
+
   /* protocol table */
   table{width:100%;border-collapse:collapse;font-size:11.5px}
   th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
@@ -190,6 +215,22 @@
   </div>
 
   <div class="panel boot" style="animation-delay:.24s">
+    <div class="ph"><span class="pref">DATA·04</span><h2>Fuelling balance</h2><span class="meta" id="fuelMeta">manual · MFP</span></div>
+    <div class="fuel-in">
+      <label><div class="k">Weight · kg</div><input id="fWeight" type="number" inputmode="decimal" placeholder="70"></label>
+      <label><div class="k">Rest-day kcal</div><input id="fTDEE" type="number" inputmode="numeric" placeholder="2000"></label>
+      <label><div class="k">Today · MFP kcal</div><input id="fIntake" type="number" inputmode="numeric" placeholder="—"></label>
+    </div>
+    <div class="fuel-out">
+      <div><div class="v" id="fRec">—</div><div class="k lbl">Target intake</div></div>
+      <div><div class="v" id="fDef">—</div><div class="k lbl">Deficit · today</div></div>
+      <div><div class="v" id="fBal">—</div><div class="k lbl" id="fBalK">Balance</div></div>
+    </div>
+    <div class="taper"><div class="taper-fill" id="taperFill"></div><span class="taper-lbl" id="taperLbl">DEFICIT TAPER · 35→55 KM/WK</span></div>
+    <div class="cap"><b>Read:</b> log food in MyFitnessPal, drop your daily total into <b>Today · MFP</b>. Target intake already bakes in a deficit that <b>shrinks as weekly volume climbs</b> — full lean in base weeks, easing to maintenance through the race build so HR and recovery stay protected. <b>Don't chase the deficit on long-run days.</b> Inputs save in this browser.</div>
+  </div>
+
+  <div class="panel boot" style="animation-delay:.28s">
     <div class="ph"><span class="pref">PROTOCOL</span><h2>11-week build</h2><span class="meta">3 RUN · 3 LIFT</span></div>
     <table>
       <thead><tr><th>Wk</th><th>Long run</th><th>Quality</th><th>Easy</th><th>Strength</th><th>Focus</th></tr></thead>
@@ -212,7 +253,7 @@
     </table>
   </div>
 
-  <div class="panel boot" style="animation-delay:.28s">
+  <div class="panel boot" style="animation-delay:.32s">
     <div class="ph"><span class="pref">ANALYSIS</span><h2>Coach readout</h2><span class="meta">REVIEW WK7</span></div>
     <div class="note"><span class="m">01</span><p><b>Verdict.</b> Endurance trend supports sub-6:00; efficiency trend doesn't yet. Primary plan: <b>5:59/km</b>. Fallback: <b>6:08–6:12/km</b> with sub-6:00 as a negative-split stretch. Week 7's 28km is the call.</p></div>
     <div class="note"><span class="m">02</span><p><b>Biggest lever:</b> keep easy runs genuinely easy (Z2, 6:40–6:45). Yours drift to 6:20 at HR 160+ — that eats recovery without building fitness.</p></div>
@@ -322,9 +363,57 @@ function render(S,live){
   else{dot.className='dot snap';st.textContent='SNAPSHOT · 24 JUN';}
 }
 
+/* ---- fuelling (manual MFP number + auto-tapering deficit) ---- */
+const FUEL_KEY='fitt_fuel_v1', KPK=0.95;  // ~0.95 kcal per kg per km
+let CUR_S=SNAPSHOT;                         // latest series driving the taper
+function loadFuel(){try{return JSON.parse(localStorage.getItem(FUEL_KEY))||{}}catch(e){return{}}}
+function saveFuel(f){try{localStorage.setItem(FUEL_KEY,JSON.stringify(f))}catch(e){}}
+function recentWeeklyKm(S){
+  if(!S||!S.volData||!S.volData.length)return 0;
+  const tail=S.volData.slice(0,-1).slice(-4);      // drop current partial week, avg last 4 complete
+  if(!tail.length)return S.volData[0]||0;
+  return tail.reduce((a,b)=>a+b,0)/tail.length;
+}
+function updateFuel(){
+  const f=loadFuel();
+  const w=parseFloat(document.getElementById('fWeight').value)||f.w||70;
+  const t=parseFloat(document.getElementById('fTDEE').value)||f.t||2000;
+  const iRaw=document.getElementById('fIntake').value;
+  const intake=iRaw!==''?parseFloat(iRaw):(f.i!=null?f.i:null);
+  saveFuel({w,t,i:intake});
+  const km=recentWeeklyKm(CUR_S);
+  const deficit=clamp(Math.round(400*(55-km)/20/10)*10,0,400);  // 400 @35km → 0 @55km
+  const dailyTrain=Math.round(w*(km/7)*KPK);
+  const rec=Math.round((t+dailyTrain-deficit)/10)*10;
+  document.getElementById('fRec').innerHTML=rec+'<small> kcal</small>';
+  document.getElementById('fDef').innerHTML='−'+deficit+'<small> kcal</small>';
+  document.getElementById('fuelMeta').textContent=km?('load '+km.toFixed(0)+'k/wk'):'manual · MFP';
+  document.getElementById('taperFill').style.width=(deficit/400*100)+'%';
+  document.getElementById('taperLbl').textContent='DEFICIT '+deficit+' KCAL · '+km.toFixed(0)+'→55 KM/WK';
+  const bal=document.getElementById('fBal'),balK=document.getElementById('fBalK');
+  if(intake==null||isNaN(intake)){bal.textContent='—';bal.className='v';balK.textContent='Balance · enter MFP';return;}
+  const d=Math.round(intake-rec);
+  bal.innerHTML=(d>0?'+':'')+d+'<small> kcal</small>';
+  if(Math.abs(d)<=150){bal.className='v ok';balK.textContent='On target';}
+  else if(d>150){bal.className='v warn';balK.textContent='Surplus · leaning stalls';}
+  else{bal.className='v warn';balK.textContent='Under · fuel up';}
+}
+['fWeight','fTDEE','fIntake'].forEach(id=>document.getElementById(id).addEventListener('input',updateFuel));
+(function initFuel(){const f=loadFuel();
+  if(f.w)document.getElementById('fWeight').value=f.w;
+  if(f.t)document.getElementById('fTDEE').value=f.t;
+  if(f.i!=null)document.getElementById('fIntake').value=f.i;})();
+
+function diag(msg){const el=document.getElementById('footSrc');if(el)el.textContent='FITT // '+msg;}
+
 render(SNAPSHOT,false);
-fetch('/api/tredict').then(r=>r.ok?r.json():Promise.reject(r.status))
-  .then(d=>{const S=computeSeries(d);if(S)render(S,true);}).catch(()=>{});
+updateFuel();
+fetch('/api/tredict')
+  .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(d=>{const S=computeSeries(d);
+    if(S){CUR_S=S;render(S,true);updateFuel();}
+    else{diag('snapshot · /api/tredict reachable, 0 runs parsed');}})
+  .catch(e=>{diag('snapshot · /api/tredict '+e.message);});
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
 </body>
