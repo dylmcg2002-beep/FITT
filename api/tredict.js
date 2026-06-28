@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
-  const key = process.env.TREDICT_API_KEY;
+  const key = process.env.TREDICT_TOKEN;
   if (!key) {
-    return res.status(500).json({ error: 'TREDICT_API_KEY not set' });
+    return res.status(500).json({ error: 'TREDICT_TOKEN not set' });
   }
   try {
     const r = await fetch(
